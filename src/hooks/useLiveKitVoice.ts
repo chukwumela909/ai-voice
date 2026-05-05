@@ -56,8 +56,7 @@ export function useLiveKitVoice() {
 
   // Generate a unique room name
   const getRoomName = useCallback(() => {
-    const id = Math.random().toString(36).slice(2, 8).toUpperCase();
-    return `voice-${id}`;
+    return "voice-room";
   }, []);
 
   const connect = useCallback(
