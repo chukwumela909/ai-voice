@@ -12,28 +12,14 @@ export default function VoiceInterface() {
     isSpeaking,
     status,
     error,
-    startListening,
+    startConversation,
     stopListening,
     stopAudio,
-    playGreeting,
   } = useVoiceConversation();
 
   const handleStart = async () => {
     setStarted(true);
-    // Small delay to ensure user gesture is registered before audio play
-    setTimeout(() => {
-      playGreeting();
-    }, 100);
-  };
-
-  const handleToggle = () => {
-    if (isListening) {
-      stopListening();
-    } else if (isSpeaking) {
-      stopAudio();
-    } else {
-      startListening();
-    }
+    startConversation();
   };
 
   if (!started) {
@@ -89,7 +75,7 @@ export default function VoiceInterface() {
         ) : (
           <>
             <span className="w-3 h-3 rounded-full bg-gray-500"></span>
-            <span className="text-gray-400">Tap microphone to start</span>
+            <span className="text-gray-400">Waiting...</span>
           </>
         )}
       </div>
@@ -111,44 +97,6 @@ export default function VoiceInterface() {
           />
         ))}
       </div>
-
-      {/* Main button */}
-      <button
-        onClick={handleToggle}
-        disabled={isProcessing}
-        className={`w-20 h-20 rounded-full flex items-center justify-center text-2xl transition-all duration-300 ${
-          isListening
-            ? "bg-red-500 hover:bg-red-600 shadow-red-500/50 shadow-lg"
-            : isSpeaking
-            ? "bg-blue-500 hover:bg-blue-600 shadow-blue-500/50 shadow-lg"
-            : "bg-white text-black hover:bg-gray-200 shadow-white/20 shadow-lg"
-        }`}
-      >
-        {isListening ? (
-          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-          </svg>
-        ) : isSpeaking ? (
-          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        ) : (
-          <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-          </svg>
-        )}
-      </button>
-
-      <p className="mt-4 text-sm text-gray-500">
-        {isListening
-          ? "Tap to stop listening"
-          : isSpeaking
-          ? "Tap to stop audio"
-          : isProcessing
-          ? "Processing your message..."
-          : "Tap microphone and speak"}
-      </p>
 
       {/* Transcript */}
       <div className="mt-8 w-full max-w-lg bg-gray-900 rounded-xl p-4 max-h-64 overflow-y-auto">

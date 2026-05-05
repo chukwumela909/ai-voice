@@ -19,6 +19,8 @@ export function useVoiceConversation() {
   const recognizerRef = useRef<SpeechRecognition | null>(null);
   const historyRef = useRef<Message[]>([]);
   const transcriptBuffer = useRef<string>("");
+  const autoRestartRef = useRef(false);
+  const startListeningRef = useRef<() => void>(() => {});
 
   // Play audio from base64 string
   const playAudio = useCallback(async (audioBase64: string) => {
@@ -169,6 +171,21 @@ export function useVoiceConversation() {
     recognizer.start();
   }, [isListening, isProcessing, isSpeaking, sendMessage]);
 
+  // Keep ref updated with latest startListening
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  });
+
+  // Auto-restart listening after AI finishes speaking
+  useEffect(() => {
+    if (!isSpeaking && autoRestartRef.current) {
+      const timer = setTimeout(() => {
+        startListeningRef.current();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isSpeaking]);
+
   // Stop listening
   const stopListening = useCallback(() => {
     if (recognizerRef.current) {
@@ -200,6 +217,24 @@ export function useVoiceConversation() {
     setIsSpeaking(false);
   }, []);
 
+  // Start conversation with greeting and auto-restart loop
+  const startConversation = useCallback(async () => {
+    autoRestartRef.current = true;
+    try {
+      const res = await fetch("/api/voice/greet");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.audio_base64) {
+        await playAudio(data.audio_base64);
+        setMessages([{ role: "assistant", text: data.greeting }]);
+      }
+    } catch (e) {
+      console.error("[Voice] Greeting error:", e);
+    }
+    // Start listening after greeting
+    setTimeout(() => startListening(), 100);
+  }, [playAudio, startListening]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -224,5 +259,6 @@ export function useVoiceConversation() {
     stopListening,
     stopAudio,
     playGreeting,
+    startConversation,
   };
 }

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
         model: "llama-3.1-8b-instant",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          ...history,
+          ...history.map((msg: any) => ({ role: msg.role, content: msg.text })),
           { role: "user", content: text },
         ],
         temperature: 0.7,
