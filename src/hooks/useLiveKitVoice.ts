@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Room,
   RoomEvent,
+  ConnectionState,
   Track,
-  TrackEvent,
   RemoteParticipant,
   RemoteTrack,
 } from "livekit-client";
@@ -101,10 +101,36 @@ export function useLiveKitVoice() {
         if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       });
 
+      // CRITICAL: Wait for full connection before enabling mic
       await room.connect(wsUrl, token);
-      console.log("[LiveKit] Connected to room");
+      console.log("[LiveKit] Signaling connected, waiting for WebRTC...");
 
-      // Publish local microphone audio
+      // Wait for ConnectionState to be fully Connected
+      if (room.state !== ConnectionState.Connected) {
+        await new Promise<void>((resolve, reject) => {
+          const onStateChange = (state: ConnectionState) => {
+            console.log("[LiveKit] Connection state:", state);
+            if (state === ConnectionState.Connected) {
+              room.off(RoomEvent.ConnectionStateChanged, onStateChange);
+              resolve();
+            } else if (state === ConnectionState.Disconnected) {
+              room.off(RoomEvent.ConnectionStateChanged, onStateChange);
+              reject(new Error("Connection disconnected before fully connected"));
+            }
+          };
+          room.on(RoomEvent.ConnectionStateChanged, onStateChange);
+          // Timeout fallback
+          setTimeout(() => {
+            if (room.state === ConnectionState.Connected) {
+              room.off(RoomEvent.ConnectionStateChanged, onStateChange);
+              resolve();
+            }
+          }, 5000);
+        });
+      }
+      console.log("[LiveKit] Fully connected, enabling microphone...");
+
+      // NOW enable microphone after full connection
       await room.localParticipant.setMicrophoneEnabled(true);
       console.log("[LiveKit] Microphone enabled");
 
