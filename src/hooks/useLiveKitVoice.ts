@@ -262,6 +262,14 @@ export function useLiveKitVoice() {
                     text,
                     source: "local",
                   });
+                  // Send text to Pipecat bot via LiveKit data message
+                  try {
+                    const payload = new TextEncoder().encode(JSON.stringify({ text }));
+                    room.localParticipant.publishData(payload, 1); // 1 = RELIABLE
+                    console.log("[Client] Sent text to bot:", text);
+                  } catch (e) {
+                    console.error("[Client] Failed to send data:", e);
+                  }
                 }
               }
             }
