@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useVoiceConversation } from "@/hooks/useVoiceConversation";
-import { useEffect } from "react";
 
 export default function VoiceInterface() {
+  const [started, setStarted] = useState(false);
   const {
     messages,
     isListening,
@@ -17,13 +18,13 @@ export default function VoiceInterface() {
     playGreeting,
   } = useVoiceConversation();
 
-  // Play greeting on first load
-  useEffect(() => {
-    const timer = setTimeout(() => {
+  const handleStart = async () => {
+    setStarted(true);
+    // Small delay to ensure user gesture is registered before audio play
+    setTimeout(() => {
       playGreeting();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [playGreeting]);
+    }, 100);
+  };
 
   const handleToggle = () => {
     if (isListening) {
@@ -35,13 +36,32 @@ export default function VoiceInterface() {
     }
   };
 
+  if (!started) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white p-6">
+        <div className="text-center">
+          <h1 className="text-5xl font-bold mb-4">Voice AI</h1>
+          <p className="text-gray-400 text-lg mb-8 max-w-md">
+            Your personal AI voice assistant. Tap to start a natural conversation.
+          </p>
+          <button
+            onClick={handleStart}
+            className="px-8 py-4 bg-white text-black font-semibold rounded-full text-lg hover:bg-gray-200 transition-all shadow-white/20 shadow-lg"
+          >
+            Start Conversation
+          </button>
+          <p className="mt-4 text-xs text-gray-600">
+            Powered by Groq + Cartesia
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white p-6">
-      <div className="text-center mb-8">
-        <h1 className="text-4xl font-bold mb-3">Voice AI</h1>
-        <p className="text-gray-400 text-lg">
-          Speak naturally. The AI agent will respond in real-time.
-        </p>
+      <div className="text-center mb-6">
+        <h1 className="text-3xl font-bold mb-2">Voice AI</h1>
       </div>
 
       {/* Status */}
