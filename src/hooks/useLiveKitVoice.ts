@@ -9,7 +9,7 @@ import {
   RemoteParticipant,
   RemoteTrack,
   RoomConnectOptions,
-  type DataPacket_Kind,
+  DataPacket_Kind,
 } from "livekit-client";
 import { useVoiceStore } from "@/lib/store";
 
@@ -265,7 +265,7 @@ export function useLiveKitVoice() {
                   // Send text to Pipecat bot via LiveKit data message
                   try {
                     const payload = new TextEncoder().encode(JSON.stringify({ text }));
-                    room.localParticipant.publishData(payload, 1); // 1 = RELIABLE
+                    room.localParticipant.publishData(payload, DataPacket_Kind.RELIABLE);
                     console.log("[Client] Sent text to bot:", text);
                   } catch (e) {
                     console.error("[Client] Failed to send data:", e);
