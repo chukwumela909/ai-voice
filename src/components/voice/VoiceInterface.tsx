@@ -1,7 +1,6 @@
 "use client";
 
 import { useVoiceConversation } from "@/hooks/useVoiceConversation";
-import { useEffect } from "react";
 
 export default function VoiceInterface() {
   const {
@@ -16,14 +15,6 @@ export default function VoiceInterface() {
     stopAudio,
     playGreeting,
   } = useVoiceConversation();
-
-  // Play greeting on first load
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      playGreeting();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [playGreeting]);
 
   const handleToggle = () => {
     if (isListening) {

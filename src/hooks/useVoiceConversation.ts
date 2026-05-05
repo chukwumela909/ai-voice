@@ -48,8 +48,12 @@ export function useVoiceConversation() {
       };
 
       await audio.play();
-    } catch (e) {
-      console.error("[Audio] Play error:", e);
+    } catch (e: any) {
+      if (e.name === "NotAllowedError") {
+        console.warn("[Audio] Autoplay blocked — user interaction required before playing audio.");
+      } else {
+        console.error("[Audio] Play error:", e);
+      }
       setIsSpeaking(false);
     }
   }, []);
