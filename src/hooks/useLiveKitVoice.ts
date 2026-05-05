@@ -240,6 +240,14 @@ export function useLiveKitVoice() {
           autoSubscribe: true,
         } satisfies RoomConnectOptions);
 
+        // Check if bot is already in the room
+        room.participants.forEach((p) => {
+          if (p.identity === "pipecat-bot") {
+            useVoiceStore.getState().setAgentJoined(true);
+            console.log("[Agent] Bot already in room");
+          }
+        });
+
         await room.localParticipant.setMicrophoneEnabled(true);
 
         // === Browser SpeechRecognition for local transcripts ===
