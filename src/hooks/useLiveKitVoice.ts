@@ -8,257 +8,158 @@ import {
   TrackEvent,
   RemoteParticipant,
   RemoteTrack,
-  RoomConnectOptions,
 } from "livekit-client";
-import { useVoiceStore } from "@/lib/store";
+
+interface VoiceState {
+  isConnected: boolean;
+  isListening: boolean;
+  isSpeaking: boolean;
+  status: string;
+  error: string | null;
+}
 
 export function useLiveKitVoice() {
+  const [state, setState] = useState<VoiceState>({
+    isConnected: false,
+    isListening: false,
+    isSpeaking: false,
+    status: "idle",
+    error: null,
+  });
+
   const roomRef = useRef<Room | null>(null);
-  const audioContainerRef = useRef<HTMLDivElement | null>(null);
-  const remoteAudioElements = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const levelIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const agentSpeakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number>(0);
+  const [visualizerData, setVisualizerData] = useState<number[]>(new Array(32).fill(0));
 
-  const [isConnecting, setIsConnecting] = useState(false);
+  // Generate token from backend
+  const getToken = async (): Promise<string> => {
+    const res = await fetch("/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room: "voice-pipecat" }),
+    });
+    if (!res.ok) throw new Error("Failed to get token");
+    const data = await res.json();
+    return data.token;
+  };
 
-  const connect = useCallback(async () => {
-    if (
-      roomRef.current?.state === "connected" ||
-      roomRef.current?.state === "connecting"
-    ) {
-      return;
-    }
-
-    setIsConnecting(true);
-    useVoiceStore.getState().setStatus("connecting");
-    useVoiceStore.getState().setError(null);
-    useVoiceStore.getState().setAgentJoined(false);
-
+  // Start conversation
+  const startConversation = useCallback(async () => {
     try {
-      const roomName = "voice-pipecat";
-      const identity = `user-${Math.floor(Math.random() * 10_000)}`;
+      setState((s) => ({ ...s, status: "connecting", error: null }));
 
-      const res = await fetch("/api/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: roomName, identity }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Token request failed (${res.status})`);
-      }
-
-      const { token, url } = await res.json();
-      if (!token || !url) {
-        throw new Error("Invalid token response from server");
-      }
+      const token = await getToken();
+      const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || "wss://livekit-livekit.amenviron.app/";
 
       const room = new Room({
         adaptiveStream: true,
         dynacast: true,
-        publishDefaults: {
-          dtx: true,
-          red: true,
-        } as const,
+        audioCaptureDefaults: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
-
       roomRef.current = room;
 
-      // === Agent detection ===
-      room.on(RoomEvent.ParticipantConnected, (p: RemoteParticipant) => {
-        useVoiceStore.getState().setAgentJoined(true);
-        console.log(`[Agent] Participant connected: ${p.identity}`);
-      });
+      // Subscribe to all remote tracks (agent audio)
+      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, pub, participant: RemoteParticipant) => {
+        console.log("[LiveKit] Track subscribed:", track.kind, "from", participant.identity);
+        if (track.kind === Track.Kind.Audio) {
+          const el = document.createElement("audio");
+          el.id = "agent-audio";
+          el.autoplay = true;
+          track.attach(el);
+          document.body.appendChild(el);
 
-      room.on(RoomEvent.ParticipantDisconnected, (p: RemoteParticipant) => {
-        const hasOthers = room.participants.size > 0;
-        if (!hasOthers) {
-          useVoiceStore.getState().setAgentJoined(false);
-          useVoiceStore.getState().setAgentSpeaking(false);
-          useVoiceStore.getState().setAgentAudioLevel(0);
-        }
-        console.log(`[Agent] Participant disconnected: ${p.identity}`);
-      });
+          // Visualize agent audio
+          const stream = new MediaStream([track.mediaStreamTrack]);
+          const audioCtx = audioContextRef.current || new AudioContext();
+          audioContextRef.current = audioCtx;
+          const source = audioCtx.createMediaStreamSource(stream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 64;
+          source.connect(analyser);
+          analyserRef.current = analyser;
 
-      // === Audio track handling ===
-      room.on(
-        RoomEvent.TrackSubscribed,
-        (track: RemoteTrack, _pub, participant: RemoteParticipant) => {
-          if (track.kind === Track.Kind.Audio && track.sid) {
-            const audioEl = track.attach() as HTMLAudioElement;
-            audioEl.volume = 1.0;
-            audioEl.autoplay = true;
-            audioEl.id = `audio-${participant.identity}-${track.sid}`;
-            remoteAudioElements.current.set(track.sid, audioEl);
-
-            if (audioContainerRef.current) {
-              audioContainerRef.current.appendChild(audioEl);
-            }
-
-            useVoiceStore.getState().setAgentSpeaking(true);
-
-            track.on(TrackEvent.AudioPlaybackStarted, () => {
-              useVoiceStore.getState().setAgentSpeaking(true);
-            });
-            track.on(TrackEvent.AudioPlaybackFailed, (e) => {
-              console.error("Audio playback failed:", e);
-            });
-            track.on(TrackEvent.Ended, () => {
-              useVoiceStore.getState().setAgentSpeaking(false);
-            });
-          }
-        }
-      );
-
-      room.on(
-        RoomEvent.TrackUnsubscribed,
-        () => {
-          const sids = new Set<string>();
-          room.participants.forEach((p) => {
-            p.tracks.forEach((pub) => {
-              if (pub.trackSid) sids.add(pub.trackSid);
-            });
-          });
-
-          const entries = Array.from(remoteAudioElements.current.entries());
-          for (const [sid, el] of entries) {
-            if (!sids.has(sid)) {
-              el.remove();
-              remoteAudioElements.current.delete(sid);
-            }
-          }
-
-          if (remoteAudioElements.current.size === 0) {
-            useVoiceStore.getState().setAgentSpeaking(false);
-            useVoiceStore.getState().setAgentAudioLevel(0);
-          }
-        }
-      );
-
-      room.on(RoomEvent.ParticipantDisconnected, () => {
-        if (remoteAudioElements.current.size === 0) {
-          useVoiceStore.getState().setAgentSpeaking(false);
-          useVoiceStore.getState().setAgentAudioLevel(0);
+          const updateViz = () => {
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(data);
+            setVisualizerData(Array.from(data).map((v) => v / 255));
+            animationFrameRef.current = requestAnimationFrame(updateViz);
+          };
+          updateViz();
         }
       });
 
-      room.on(RoomEvent.Connected, () => {
-        useVoiceStore.getState().setStatus("connected");
-        useVoiceStore.getState().setMicEnabled(true);
+      room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+        track.detach();
+        const el = document.getElementById("agent-audio");
+        if (el) el.remove();
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       });
 
-      room.on(RoomEvent.Disconnected, () => {
-        useVoiceStore.getState().setStatus("idle");
-        useVoiceStore.getState().setMicEnabled(false);
-        useVoiceStore.getState().setSpeaking(false);
-        useVoiceStore.getState().setAgentSpeaking(false);
-        useVoiceStore.getState().setAgentJoined(false);
-        useVoiceStore.getState().setUserAudioLevel(0);
-        useVoiceStore.getState().setAgentAudioLevel(0);
-      });
+      await room.connect(wsUrl, token);
+      console.log("[LiveKit] Connected to room");
 
-      room.on(RoomEvent.ConnectionStateChanged, (state) => {
-        if (state === "connecting") useVoiceStore.getState().setStatus("connecting");
-      });
-
-      room.on(RoomEvent.Reconnecting, () => {
-        useVoiceStore.getState().setStatus("connecting");
-      });
-
-      room.on(RoomEvent.Reconnected, () => {
-        useVoiceStore.getState().setStatus("connected");
-      });
-
-      await room.connect(url, token, {
-        autoSubscribe: true,
-      } satisfies RoomConnectOptions);
-
-      // Check if bot is already in the room
-      room.participants.forEach((p) => {
-        useVoiceStore.getState().setAgentJoined(true);
-        console.log("[Agent] Bot already in room:", p.identity);
-      });
-
+      // Publish local microphone audio
       await room.localParticipant.setMicrophoneEnabled(true);
+      console.log("[LiveKit] Microphone enabled");
 
-      // === Audio level polling ===
-      levelIntervalRef.current = setInterval(() => {
-        const local = room.localParticipant;
-        useVoiceStore
-          .getState()
-          .setUserAudioLevel(local.audioLevel ?? 0);
-        useVoiceStore
-          .getState()
-          .setSpeaking(local.isSpeaking ?? false);
-
-        let maxAgentLevel = 0;
-        room.participants.forEach((p: RemoteParticipant) => {
-          if (p.audioLevel && p.audioLevel > maxAgentLevel) {
-            maxAgentLevel = p.audioLevel;
-          }
-        });
-        useVoiceStore.getState().setAgentAudioLevel(maxAgentLevel);
-        useVoiceStore.getState().setAgentSpeaking(maxAgentLevel > 0.01);
-      }, 80);
-    } catch (err) {
-      console.error("Failed to connect:", err);
-      useVoiceStore
-        .getState()
-        .setError(
-          err instanceof Error ? err.message : "Unknown connection error"
-        );
-      useVoiceStore.getState().setStatus("error");
-    } finally {
-      setIsConnecting(false);
+      setState({
+        isConnected: true,
+        isListening: true,
+        isSpeaking: false,
+        status: "connected",
+        error: null,
+      });
+    } catch (err: any) {
+      console.error("[LiveKit] Connection error:", err);
+      setState({
+        isConnected: false,
+        isListening: false,
+        isSpeaking: false,
+        status: "error",
+        error: err.message || "Failed to connect",
+      });
     }
   }, []);
 
-  const disconnect = useCallback(() => {
-    if (levelIntervalRef.current) {
-      clearInterval(levelIntervalRef.current);
-      levelIntervalRef.current = null;
+  // Stop conversation
+  const stopConversation = useCallback(async () => {
+    if (roomRef.current) {
+      await roomRef.current.disconnect();
+      roomRef.current = null;
     }
-    if (agentSpeakingTimeoutRef.current) {
-      clearTimeout(agentSpeakingTimeoutRef.current);
-      agentSpeakingTimeoutRef.current = null;
+    if (audioContextRef.current) {
+      await audioContextRef.current.close();
+      audioContextRef.current = null;
     }
-
-    remoteAudioElements.current.forEach((el) => el.remove());
-    remoteAudioElements.current.clear();
-
-    roomRef.current?.disconnect();
-    roomRef.current = null;
-
-    useVoiceStore.getState().setStatus("idle");
-    useVoiceStore.getState().setMicEnabled(false);
-    useVoiceStore.getState().setSpeaking(false);
-    useVoiceStore.getState().setAgentSpeaking(false);
-    useVoiceStore.getState().setAgentJoined(false);
-    useVoiceStore.getState().setUserAudioLevel(0);
-    useVoiceStore.getState().setAgentAudioLevel(0);
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    setState({
+      isConnected: false,
+      isListening: false,
+      isSpeaking: false,
+      status: "idle",
+      error: null,
+    });
   }, []);
 
-  const toggleMic = useCallback(async () => {
-    const room = roomRef.current;
-    if (!room || room.state !== "connected") return;
-
-    const next = !room.localParticipant.isMicrophoneEnabled;
-    await room.localParticipant.setMicrophoneEnabled(next);
-    useVoiceStore.getState().setMicEnabled(next);
-  }, []);
-
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      disconnect();
+      stopConversation();
     };
-  }, [disconnect]);
+  }, [stopConversation]);
 
   return {
-    connect,
-    disconnect,
-    toggleMic,
-    isConnecting,
-    audioContainerRef,
+    ...state,
+    visualizerData,
+    startConversation,
+    stopConversation,
   };
 }
