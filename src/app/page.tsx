@@ -12,7 +12,7 @@ export default function HomePage() {
             Speak naturally. The AI agent will join the room automatically.
           </p>
         </header>
-        <VoiceInterface roomName="voice-room" />
+        <VoiceInterface />
       </div>
     </main>
   );

@@ -7,13 +7,9 @@ import { AudioVisualizer } from "./AudioVisualizer";
 import { MicButton } from "./MicButton";
 import { TranscriptLog } from "./TranscriptLog";
 
-interface VoiceInterfaceProps {
-  roomName: string;
-}
-
-export function VoiceInterface({ roomName }: VoiceInterfaceProps) {
+export function VoiceInterface() {
   const { connect, disconnect, toggleMic, isConnecting, audioContainerRef } =
-    useLiveKitVoice(roomName);
+    useLiveKitVoice();
 
   const [hasStarted, setHasStarted] = useState(false);
 

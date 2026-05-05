@@ -5,6 +5,7 @@ export interface Transcript {
   role: "user" | "agent";
   text: string;
   timestamp: number;
+  source?: "local" | "server"; // local = browser SpeechRecognition, server = agent
 }
 
 interface VoiceState {
@@ -12,6 +13,7 @@ interface VoiceState {
   isMicEnabled: boolean;
   isSpeaking: boolean;
   isAgentSpeaking: boolean;
+  isAgentJoined: boolean;
   userAudioLevel: number;
   agentAudioLevel: number;
   error: string | null;
@@ -20,6 +22,7 @@ interface VoiceState {
   setMicEnabled: (enabled: boolean) => void;
   setSpeaking: (speaking: boolean) => void;
   setAgentSpeaking: (speaking: boolean) => void;
+  setAgentJoined: (joined: boolean) => void;
   setUserAudioLevel: (level: number) => void;
   setAgentAudioLevel: (level: number) => void;
   setError: (error: string | null) => void;
@@ -32,6 +35,7 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   isMicEnabled: false,
   isSpeaking: false,
   isAgentSpeaking: false,
+  isAgentJoined: false,
   userAudioLevel: 0,
   agentAudioLevel: 0,
   error: null,
@@ -40,6 +44,7 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   setMicEnabled: (isMicEnabled) => set({ isMicEnabled }),
   setSpeaking: (isSpeaking) => set({ isSpeaking }),
   setAgentSpeaking: (isAgentSpeaking) => set({ isAgentSpeaking }),
+  setAgentJoined: (isAgentJoined) => set({ isAgentJoined }),
   setUserAudioLevel: (userAudioLevel) => set({ userAudioLevel }),
   setAgentAudioLevel: (agentAudioLevel) => set({ agentAudioLevel }),
   setError: (error) => set({ error, status: error ? "error" : "idle" }),
